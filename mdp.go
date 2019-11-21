@@ -91,7 +91,7 @@ func ws(w http.ResponseWriter, r *http.Request, path string) error {
 		select {
 		case <-ctx.Done():
 			c.Close(websocket.StatusNormalClosure, "")
-			return ctx.Err()
+			return nil
 		case _, ok := <-n:
 			if !ok {
 				return errors.New("unexpected error")

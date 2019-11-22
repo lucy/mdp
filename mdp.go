@@ -21,7 +21,6 @@ import (
 	"nhooyr.io/websocket"
 )
 
-// this is awful because github.com/fsnotify/fsnotify is awful
 func watchFile(ctx context.Context, p string) (<-chan struct{}, error) {
 	n, err := fsnotify.NewWatcher()
 	if err != nil {

@@ -17,6 +17,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
 	"nhooyr.io/websocket"
 )
 
@@ -119,7 +120,8 @@ func putFile(ctx context.Context, c *websocket.Conn, path string) error {
 		return err
 	}
 	defer w.Close()
-	gm := goldmark.New(goldmark.WithExtensions(extension.GFM))
+	gm := goldmark.New(goldmark.WithExtensions(extension.GFM),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID()))
 	if err := gm.Convert(src, w); err != nil {
 		log.Print(err)
 	}

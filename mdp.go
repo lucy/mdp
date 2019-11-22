@@ -171,6 +171,7 @@ var html = []byte(`<!doctype html>
 <body>
   <script>
     const loc = window.location;
+    window.document.title = loc.pathname;
     const sock = new WebSocket("ws://" + loc.host + loc.pathname + "/ws");
     sock.addEventListener('message', function (event) { 
       document.getElementById("content").innerHTML = event.data;

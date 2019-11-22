@@ -27,52 +27,32 @@ func watchFile(ctx context.Context, p string) (<-chan struct{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := n.Add(p); err != nil {
-		return nil, err
-	}
 	c := make(chan struct{}, 1)
 	go func() {
 		defer close(c)
 		defer n.Close()
 		for {
 			c <- struct{}{}
+			if err := n.Add(p); err != nil {
+				log.Print(err)
+				return
+			}
 			select {
 			case <-ctx.Done():
 				return
-			case event, ok := <-n.Events:
-				if !ok {
-					return
-				}
-				if event.Op&fsnotify.Remove == fsnotify.Remove {
-					if err := n.Add(p); err != nil {
-						log.Print(err)
-						return
-					}
-				}
+			case <-n.Events:
 				t := time.After(time.Millisecond * 50)
-				// eat successive events
 			loop:
 				for {
 					select {
 					case <-t:
 						break loop
-					case event, ok := <-n.Events:
-						if !ok {
-							return
-						}
-						if event.Op&fsnotify.Remove == fsnotify.Remove {
-							if err := n.Add(p); err != nil {
-								log.Print(err)
-								return
-							}
-						}
+					case <-n.Events:
 					}
 				}
-			case err, ok := <-n.Errors:
-				if !ok {
-					return
-				}
+			case err := <-n.Errors:
 				log.Print(err)
+				return
 			}
 		}
 	}()

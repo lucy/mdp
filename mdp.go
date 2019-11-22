@@ -132,10 +132,14 @@ func main() {
 	addr := flag.String("addr", "localhost:6969", "address to listen on")
 	flag.Parse()
 	args := flag.Args()
-	if len(args) != 1 {
+	if len(args) > 1 {
 		log.Fatal("too many arguments")
 	}
-	p, root := "", args[0]
+	root := "."
+	if len(args) == 1 {
+		root = args[0]
+	}
+	p := ""
 	if path.Ext(root) == ".md" {
 		p = "/" + path.Clean(filepath.Base(root))
 		root = filepath.Dir(root)
@@ -143,7 +147,7 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		rp := path.Clean(r.URL.Path)
 		switch {
-		case rp == "/" && root != p:
+		case rp == "/" && p != "":
 			http.Redirect(w, r, p, http.StatusFound)
 		case path.Ext(rp) == ".md":
 			http.ServeContent(w, r, "", time.Now(), bytes.NewReader(html))

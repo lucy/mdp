@@ -16,8 +16,10 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/yuin/goldmark"
+	highlighting "github.com/yuin/goldmark-highlighting"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/util"
 	"nhooyr.io/websocket"
 )
 
@@ -98,7 +100,16 @@ func putFile(ctx context.Context, c *websocket.Conn, path string) error {
 		return err
 	}
 	defer w.Close()
-	gm := goldmark.New(goldmark.WithExtensions(extension.GFM),
+	r := func(w util.BufWriter, ctx highlighting.CodeBlockContext, e bool) {
+		if e {
+			w.Write([]byte("<pre class=\"code\">"))
+		} else {
+			w.Write([]byte("</pre>"))
+		}
+	}
+	hi := highlighting.NewHighlighting(highlighting.WithWrapperRenderer(r),
+		highlighting.WithStyle("github"))
+	gm := goldmark.New(goldmark.WithExtensions(extension.GFM, hi),
 		goldmark.WithParserOptions(parser.WithAutoHeadingID()))
 	if err := gm.Convert(src, w); err != nil {
 		log.Print(err)
@@ -128,7 +139,7 @@ func main() {
 		case rp == "/" && p != "":
 			http.Redirect(w, r, p, http.StatusFound)
 		case path.Ext(rp) == ".md":
-			http.ServeContent(w, r, "", time.Now(), bytes.NewReader(html))
+			http.ServeContent(w, r, "", time.Now(), bytes.NewReader(index))
 		case path.Base(rp) == "ws" && path.Ext(path.Dir(rp)) == ".md":
 			err := ws(w, r, root, path.Dir(rp))
 			if err != nil {
@@ -144,7 +155,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
 
-var html = []byte(`<!doctype html>
+var index = []byte(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">

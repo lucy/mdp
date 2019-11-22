@@ -51,7 +51,6 @@ func watchFile(ctx context.Context, p string) (<-chan struct{}, error) {
 				}
 			case err := <-n.Errors:
 				log.Print(err)
-				return
 			}
 		}
 	}()
@@ -68,7 +67,7 @@ func ws(w http.ResponseWriter, r *http.Request, root, p string) error {
 		return err
 	}
 	defer c.Close(websocket.StatusInternalError, "")
-	ctx, cancel := context.WithTimeout(r.Context(), time.Minute*10)
+	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	ctx = c.CloseRead(r.Context())
 	n, err := watchFile(ctx, p)

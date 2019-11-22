@@ -5,9 +5,13 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"path"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -17,12 +21,12 @@ import (
 )
 
 // this is awful because github.com/fsnotify/fsnotify is awful
-func watchFile(ctx context.Context, path string) (<-chan struct{}, error) {
+func watchFile(ctx context.Context, p string) (<-chan struct{}, error) {
 	n, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
 	}
-	if err := n.Add(path); err != nil {
+	if err := n.Add(p); err != nil {
 		return nil, err
 	}
 	c := make(chan struct{}, 1)
@@ -39,7 +43,7 @@ func watchFile(ctx context.Context, path string) (<-chan struct{}, error) {
 					return
 				}
 				if event.Op&fsnotify.Remove == fsnotify.Remove {
-					if err := n.Add(path); err != nil {
+					if err := n.Add(p); err != nil {
 						log.Print(err)
 						return
 					}
@@ -56,7 +60,7 @@ func watchFile(ctx context.Context, path string) (<-chan struct{}, error) {
 							return
 						}
 						if event.Op&fsnotify.Remove == fsnotify.Remove {
-							if err := n.Add(path); err != nil {
+							if err := n.Add(p); err != nil {
 								log.Print(err)
 								return
 							}
@@ -74,7 +78,11 @@ func watchFile(ctx context.Context, path string) (<-chan struct{}, error) {
 	return c, nil
 }
 
-func ws(w http.ResponseWriter, r *http.Request, path string) error {
+func ws(w http.ResponseWriter, r *http.Request, root, p string) error {
+	if filepath.Separator != '/' && strings.ContainsRune(p, filepath.Separator) {
+		return errors.New("invalid character in file path")
+	}
+	p = filepath.Join(root, filepath.FromSlash(path.Clean("/"+p)))
 	c, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		return err
@@ -83,7 +91,7 @@ func ws(w http.ResponseWriter, r *http.Request, path string) error {
 	ctx, cancel := context.WithTimeout(r.Context(), time.Minute*10)
 	defer cancel()
 	ctx = c.CloseRead(r.Context())
-	n, err := watchFile(ctx, path)
+	n, err := watchFile(ctx, p)
 	if err != nil {
 		return err
 	}
@@ -96,7 +104,7 @@ func ws(w http.ResponseWriter, r *http.Request, path string) error {
 			if !ok {
 				return errors.New("unexpected error")
 			}
-			putFile(ctx, c, path)
+			putFile(ctx, c, p)
 		}
 	}
 }
@@ -125,17 +133,30 @@ func main() {
 	if len(args) != 1 {
 		log.Fatal("too many arguments")
 	}
-	path := args[0]
+	p, root := "", args[0]
+	if path.Ext(root) == ".md" {
+		p = "/" + path.Clean(filepath.Base(root))
+		root = filepath.Dir(root)
+	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeContent(w, r, "index.html", time.Now(), bytes.NewReader(html))
-	})
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		err := ws(w, r, path)
-		if err != nil {
-			log.Print(err)
+		rp := path.Clean(r.URL.Path)
+		switch {
+		case rp == "/" && root != p:
+			http.Redirect(w, r, p, http.StatusFound)
+		case path.Ext(rp) == ".md":
+			http.ServeContent(w, r, "", time.Now(), bytes.NewReader(html))
+		case path.Base(rp) == "ws" && path.Ext(path.Dir(rp)) == ".md":
+			err := ws(w, r, root, path.Dir(rp))
+			if err != nil {
+				log.Print(err)
+			}
+		default:
+			http.FileServer(http.Dir(filepath.Dir(root))).ServeHTTP(w, r)
 		}
 	})
-	log.Printf("http://%s", *addr)
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	})
+	fmt.Printf("http://%s\n", *addr)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
 
@@ -163,7 +184,8 @@ var html = []byte(`<!doctype html>
 </head>
 <body>
   <script>
-    const sock = new WebSocket("ws://" + window.location.host + "/ws");
+    const loc = window.location;
+    const sock = new WebSocket("ws://" + loc.host + loc.pathname + "/ws");
     sock.addEventListener('message', function (event) { 
       document.getElementById("content").innerHTML = event.data;
     });
